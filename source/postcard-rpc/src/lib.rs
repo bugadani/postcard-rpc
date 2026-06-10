@@ -147,7 +147,7 @@ pub mod test_utils;
 pub use postcard_schema::key::hash;
 pub use postcard_schema::key::Key;
 
-/// A compacted 2-byte key
+/// A compacted 1-byte key
 ///
 /// This is defined specifically as the following conversion:
 ///
