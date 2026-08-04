@@ -38,9 +38,8 @@ postcard-schema = { version = "0.2.2", features = ["derive"] }
 # std-only features
 #
 
-# TODO: upstream nusb 0.2 does not build on wasm - there's WIP towards this
-[target.'cfg(not(target_family = "wasm"))'.dependencies.nusb]
-version = "0.2"
+[dependencies.nusb]
+version = "0.2.7"
 optional = true
 
 [dependencies.tokio-serial]
@@ -220,9 +219,8 @@ cobs-serial = ["cobs/use_std", "dep:tokio-serial"]
 
 # Raw (bulk) USB support
 #
-# Works on: Win, Mac, Linux
-# Does NOT work on: WASM (yet)
-raw-nusb = ["dep:nusb", "use-std", "futures-lite"]
+# Works on: Win, Mac, Linux, WASM
+raw-nusb = ["dep:nusb", "use-std", "futures-lite", "dep:wasm-bindgen-futures"]
 
 # WebUSB support
 #

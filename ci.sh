@@ -35,7 +35,7 @@ cargo test \
     --no-default-features \
     --features=use-std,cobs-serial,raw-nusb
 
-# Host + wasm host-client impls
+# Host + wasm/webusb host-client impls
 RUSTFLAGS="--cfg=web_sys_unstable_apis" \
     cargo check \
         --manifest-path source/postcard-rpc/Cargo.toml \
@@ -47,6 +47,20 @@ RUSTFLAGS="--cfg=web_sys_unstable_apis" \
         --manifest-path source/postcard-rpc/Cargo.toml \
         --no-default-features \
         --features=use-std,webusb \
+        --target wasm32-unknown-unknown
+
+# Host + wasm/nusb host-client impls
+RUSTFLAGS="--cfg=web_sys_unstable_apis" \
+    cargo check \
+        --manifest-path source/postcard-rpc/Cargo.toml \
+        --no-default-features \
+        --features=raw-nusb \
+        --target wasm32-unknown-unknown
+RUSTFLAGS="--cfg=web_sys_unstable_apis" \
+    cargo build \
+        --manifest-path source/postcard-rpc/Cargo.toml \
+        --no-default-features \
+        --features=raw-nusb \
         --target wasm32-unknown-unknown
 
 # Embedded + embassy server impl
