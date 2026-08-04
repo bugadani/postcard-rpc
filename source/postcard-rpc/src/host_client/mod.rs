@@ -36,7 +36,7 @@ use crate::{
 use self::util::Stopper;
 pub use crate::host_client::util::HostClientConfig;
 
-#[cfg(all(feature = "raw-nusb", not(target_family = "wasm")))]
+#[cfg(feature = "raw-nusb")]
 mod raw_nusb;
 
 #[cfg(all(feature = "cobs-serial", not(target_family = "wasm")))]
