@@ -291,39 +291,25 @@ macro_rules! define_dispatch {
             use super::*;
             use $crate::Key;
 
+            const fn path_keys<const N: usize>(items: &[(&'static str, Key)]) -> [Key; N] {
+                let mut keys = [unsafe { Key::from_bytes([0; 8]) }; N];
+                let mut i = 0;
+                while i < N {
+                    keys[i] = items[i].1;
+                    i += 1;
+                }
+                keys
+            }
+
             // Create a list of JUST the ENDPOINT keys from the endpoint report
-            const EP_KEYS_SZ: usize = $endpoint_list.endpoints.len();
-            const EP_KEYS: [Key; EP_KEYS_SZ] = const {
-                let mut keys = [unsafe { Key::from_bytes([0; 8]) }; EP_KEYS_SZ];
-                let mut i = 0;
-                while i < EP_KEYS_SZ {
-                    keys[i] = $endpoint_list.endpoints[i].1;
-                    i += 1;
-                }
-                keys
-            };
+            const EP_KEYS: [Key; $endpoint_list.endpoints.len()] =
+                path_keys($endpoint_list.endpoints);
             // Create a list of JUST the MESSAGE keys from the TOPICS IN report
-            const TP_IN_KEYS_SZ: usize = $topic_in_list.topics.len();
-            const TP_IN_KEYS: [Key; TP_IN_KEYS_SZ] = const {
-                let mut keys = [unsafe { Key::from_bytes([0; 8]) }; TP_IN_KEYS_SZ];
-                let mut i = 0;
-                while i < TP_IN_KEYS_SZ {
-                    keys[i] = $topic_in_list.topics[i].1;
-                    i += 1;
-                }
-                keys
-            };
+            const TP_IN_KEYS: [Key; $topic_in_list.topics.len()] =
+                path_keys($topic_in_list.topics);
             // Create a list of JUST the MESSAGE keys from the TOPICS OUT report
-            const TP_OUT_KEYS_SZ: usize = $topic_out_list.topics.len();
-            const TP_OUT_KEYS: [Key; TP_OUT_KEYS_SZ] = const {
-                let mut keys = [unsafe { Key::from_bytes([0; 8]) }; TP_OUT_KEYS_SZ];
-                let mut i = 0;
-                while i < TP_OUT_KEYS_SZ {
-                    keys[i] = $topic_out_list.topics[i].1;
-                    i += 1;
-                }
-                keys
-            };
+            const TP_OUT_KEYS: [Key; $topic_out_list.topics.len()] =
+                path_keys($topic_out_list.topics);
 
             // This is a list of all ENDPOINT KEYS in the actual handlers
             //
@@ -378,7 +364,7 @@ macro_rules! define_dispatch {
                 );
                 assert!(
                     a_is_subset_of_b(TP_HANDLER_IN_KEYS, &TP_IN_KEYS),
-                    "All listed endpoint handlers must be listed in endpoints->list! Missing Response Type found!",
+                    "All listed topic-in handlers must be listed in topics_in->list! Missing Topic Type found!",
                 );
                 if NEEDED_SZ_IN > NEEDED_SZ_OUT {
                     NEEDED_SZ_IN
