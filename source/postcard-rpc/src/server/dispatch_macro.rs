@@ -118,29 +118,22 @@ macro_rules! define_dispatch {
 
 
     //////////////////////////////////////////////////////////////////////////////
-    // Implementation of the dispatch trait for the app, where the Key length
-    // is N, where N is 1, 2, 4, or 8
+    // One Key-width matcher. We generate this for 1, 2, 4, and 8 byte keys; only
+    // the width selected by `sizer::NEEDED_SZ` is called from `Dispatch::handle`.
     //////////////////////////////////////////////////////////////////////////////
     (@matcher
-        $n:literal $app_name:ident $tx_impl:ty; $spawn_fn:ident $key_ty:ty; $key_kind:expr;
+        $handle_fn:ident $app_name:ident $tx_impl:ty; $spawn_fn:ident $key_ty:ty;
         $endpoint_key_name:ident / $topic_key_name:ident
         ($($endpoint:ty | $ep_flavor:tt | $ep_handler:ident)*)
         ($($topic_in:ty | $tp_flavor:tt | $tp_handler:ident)*)
     ) => {
-        impl $crate::server::Dispatch for $app_name<$n> {
-            type Tx = $tx_impl;
-
-            fn min_key_len(&self) -> $crate::header::VarKeyKind {
-                $key_kind
-            }
-
-            /// Handle dispatching of a single frame
-            async fn handle(
+        impl $app_name {
+            async fn $handle_fn(
                 &mut self,
-                tx: &$crate::server::Sender<Self::Tx>,
+                tx: &$crate::server::Sender<$tx_impl>,
                 hdr: &$crate::header::VarHeader,
                 body: &[u8],
-            ) -> Result<(), <Self::Tx as $crate::server::WireTx>::Error> {
+            ) -> Result<(), <$tx_impl as $crate::server::WireTx>::Error> {
                 let key = hdr.key;
                 let Ok(keyb) = <$key_ty>::try_from(&key) else {
                     let err = $crate::standard_icd::WireError::KeyTooSmall;
@@ -386,92 +379,105 @@ macro_rules! define_dispatch {
         // different async handlers without degrading to dyn Future, because no alloc on
         // embedded systems.
         //
-        // The easiest way I've found to achieve this is actually to implement this
-        // handler for ALL of 1, 2, 4, 8, BUT to hide that from the user, and instead
-        // use THIS alias to give them the one that they need.
-        //
-        // This is overly complicated because I'm mixing const-time capabilities with
-        // macro-time capabilities. I'm very open to other suggestions that achieve the
-        // same outcome.
+        // Macros run before we know `NEEDED_SZ`, so we emit a matcher for each of
+        // 1, 2, 4, and 8 byte keys. `Dispatch::handle` then calls only the one that
+        // matches the const-computed width.
         #[doc=concat!("This defines the postcard-rpc app implementation for ", stringify!($app_name))]
-        pub type $app_name = impls::$app_name<{ sizer::NEEDED_SZ }>;
-        const HAS_DUPE: bool = sizer::HAS_DUPE;
+        pub struct $app_name {
+            pub context: $context_ty,
+            pub spawn: $spawn_impl,
+            pub device_map: &'static $crate::DeviceMap,
+        }
+
         const _DUPE_CHECK: () = const {
-            assert!(!HAS_DUPE, "Caught duplicate items. Is `omit_std` set? This is likely a bug in your code. See https://github.com/jamesmunns/postcard-rpc/issues/135.");
+            assert!(!sizer::HAS_DUPE, "Caught duplicate items. Is `omit_std` set? This is likely a bug in your code. See https://github.com/jamesmunns/postcard-rpc/issues/135.");
         };
 
-        mod impls {
-            use super::*;
+        impl $app_name {
+            /// Create a new instance of the dispatcher
+            pub fn new(
+                context: $context_ty,
+                spawn: $spawn_impl,
+            ) -> Self {
+                const MAP: &$crate::DeviceMap = &$crate::DeviceMap {
+                    types: const {
+                        const LISTS: &[&[&'static $crate::postcard_schema::schema::NamedType]] = &[
+                            $endpoint_list.types,
+                            $topic_in_list.types,
+                            $topic_out_list.types,
+                        ];
+                        const TTL_COUNT: usize = $endpoint_list.types.len() + $topic_in_list.types.len() + $topic_out_list.types.len();
 
-            pub struct $app_name<const N: usize> {
-                pub context: $context_ty,
-                pub spawn: $spawn_impl,
-                pub device_map: &'static $crate::DeviceMap,
-            }
-
-            impl<const N: usize> $app_name<N> {
-                /// Create a new instance of the dispatcher
-                pub fn new(
-                    context: $context_ty,
-                    spawn: $spawn_impl,
-                ) -> Self {
-                    const MAP: &$crate::DeviceMap = &$crate::DeviceMap {
-                        types: const {
-                            const LISTS: &[&[&'static $crate::postcard_schema::schema::NamedType]] = &[
-                                $endpoint_list.types,
-                                $topic_in_list.types,
-                                $topic_out_list.types,
-                            ];
-                            const TTL_COUNT: usize = $endpoint_list.types.len() + $topic_in_list.types.len() + $topic_out_list.types.len();
-
-                            const BIG_RPT: ([Option<&'static $crate::postcard_schema::schema::NamedType>; TTL_COUNT], usize) = $crate::uniques::merge_nty_lists(LISTS);
-                            const SMALL_RPT: [&'static $crate::postcard_schema::schema::NamedType; BIG_RPT.1] = $crate::uniques::cruncher(BIG_RPT.0.as_slice());
-                            SMALL_RPT.as_slice()
-                        },
-                        endpoints: &$endpoint_list.endpoints,
-                        topics_in: &$topic_in_list.topics,
-                        topics_out: &$topic_out_list.topics,
-                        min_key_len: const {
-                            match sizer::NEEDED_SZ {
-                                1 => $crate::header::VarKeyKind::Key1,
-                                2 => $crate::header::VarKeyKind::Key2,
-                                4 => $crate::header::VarKeyKind::Key4,
-                                8 => $crate::header::VarKeyKind::Key8,
-                                _ => unreachable!(),
-                            }
+                        const BIG_RPT: ([Option<&'static $crate::postcard_schema::schema::NamedType>; TTL_COUNT], usize) = $crate::uniques::merge_nty_lists(LISTS);
+                        const SMALL_RPT: [&'static $crate::postcard_schema::schema::NamedType; BIG_RPT.1] = $crate::uniques::cruncher(BIG_RPT.0.as_slice());
+                        SMALL_RPT.as_slice()
+                    },
+                    endpoints: &$endpoint_list.endpoints,
+                    topics_in: &$topic_in_list.topics,
+                    topics_out: &$topic_out_list.topics,
+                    min_key_len: const {
+                        match sizer::NEEDED_SZ {
+                            1 => $crate::header::VarKeyKind::Key1,
+                            2 => $crate::header::VarKeyKind::Key2,
+                            4 => $crate::header::VarKeyKind::Key4,
+                            8 => $crate::header::VarKeyKind::Key8,
+                            _ => unreachable!(),
                         }
-                    };
-                    $app_name {
-                        context,
-                        spawn,
-                        device_map: MAP,
                     }
+                };
+                $app_name {
+                    context,
+                    spawn,
+                    device_map: MAP,
                 }
             }
+        }
 
-            $crate::define_dispatch! {
-                @matcher 1 $app_name $tx_impl; $spawn_fn $crate::Key1; $crate::header::VarKeyKind::Key1;
-                ENDPOINT_KEY1 / TOPIC_KEY1
-                ($($endpoint | $ep_flavor | $ep_handler)*)
-                ($($topic_in | $tp_flavor | $tp_handler)*)
+        $crate::define_dispatch! {
+            @matcher handle_key1 $app_name $tx_impl; $spawn_fn $crate::Key1;
+            ENDPOINT_KEY1 / TOPIC_KEY1
+            ($($endpoint | $ep_flavor | $ep_handler)*)
+            ($($topic_in | $tp_flavor | $tp_handler)*)
+        }
+        $crate::define_dispatch! {
+            @matcher handle_key2 $app_name $tx_impl; $spawn_fn $crate::Key2;
+            ENDPOINT_KEY2 / TOPIC_KEY2
+            ($($endpoint | $ep_flavor | $ep_handler)*)
+            ($($topic_in | $tp_flavor | $tp_handler)*)
+        }
+        $crate::define_dispatch! {
+            @matcher handle_key4 $app_name $tx_impl; $spawn_fn $crate::Key4;
+            ENDPOINT_KEY4 / TOPIC_KEY4
+            ($($endpoint | $ep_flavor | $ep_handler)*)
+            ($($topic_in | $tp_flavor | $tp_handler)*)
+        }
+        $crate::define_dispatch! {
+            @matcher handle_key8 $app_name $tx_impl; $spawn_fn $crate::Key;
+            ENDPOINT_KEY / TOPIC_KEY
+            ($($endpoint | $ep_flavor | $ep_handler)*)
+            ($($topic_in | $tp_flavor | $tp_handler)*)
+        }
+
+        impl $crate::server::Dispatch for $app_name {
+            type Tx = $tx_impl;
+
+            fn min_key_len(&self) -> $crate::header::VarKeyKind {
+                self.device_map.min_key_len
             }
-            $crate::define_dispatch! {
-                @matcher 2 $app_name $tx_impl; $spawn_fn $crate::Key2; $crate::header::VarKeyKind::Key2;
-                ENDPOINT_KEY2 / TOPIC_KEY2
-                ($($endpoint | $ep_flavor | $ep_handler)*)
-                ($($topic_in | $tp_flavor | $tp_handler)*)
-            }
-            $crate::define_dispatch! {
-                @matcher 4 $app_name $tx_impl; $spawn_fn $crate::Key4; $crate::header::VarKeyKind::Key4;
-                ENDPOINT_KEY4 / TOPIC_KEY4
-                ($($endpoint | $ep_flavor | $ep_handler)*)
-                ($($topic_in | $tp_flavor | $tp_handler)*)
-            }
-            $crate::define_dispatch! {
-                @matcher 8 $app_name $tx_impl; $spawn_fn $crate::Key; $crate::header::VarKeyKind::Key8;
-                ENDPOINT_KEY / TOPIC_KEY
-                ($($endpoint | $ep_flavor | $ep_handler)*)
-                ($($topic_in | $tp_flavor | $tp_handler)*)
+
+            async fn handle(
+                &mut self,
+                tx: &$crate::server::Sender<Self::Tx>,
+                hdr: &$crate::header::VarHeader,
+                body: &[u8],
+            ) -> Result<(), <Self::Tx as $crate::server::WireTx>::Error> {
+                match sizer::NEEDED_SZ {
+                    1 => self.handle_key1(tx, hdr, body).await,
+                    2 => self.handle_key2(tx, hdr, body).await,
+                    4 => self.handle_key4(tx, hdr, body).await,
+                    8 => self.handle_key8(tx, hdr, body).await,
+                    _ => unreachable!(),
+                }
             }
         }
 
