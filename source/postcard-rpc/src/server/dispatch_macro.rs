@@ -127,39 +127,6 @@ macro_rules! define_dispatch {
         ($($endpoint:ty | $ep_flavor:tt | $ep_handler:ident)*)
         ($($topic_in:ty | $tp_flavor:tt | $tp_handler:ident)*)
     ) => {
-        impl $app_name<$n> {
-            /// Check if there are any unexpected duplicates, typically this occurs because
-            /// the user has set `omit_std`
-            #[doc(hidden)]
-            pub const fn has_dupe() -> bool {
-                const DUPE: bool = const {
-                    const ALL_KEYS: &[$key_ty] = &[
-                        <$crate::standard_icd::PingEndpoint as $crate::Endpoint>::$endpoint_key_name,
-                        <$crate::standard_icd::GetAllSchemasEndpoint as $crate::Endpoint>::$endpoint_key_name,
-                        $(
-                            <$endpoint as $crate::Endpoint>::$endpoint_key_name,
-                        )*
-                        $(
-                            <$topic_in as $crate::Topic>::$topic_key_name,
-                        )*
-                    ];
-                    const LEN: usize = ALL_KEYS.len();
-                    let mut i = 0;
-                    let mut dupe = false;
-                    while i < LEN {
-                        let mut j = i + 1;
-                        while j < LEN {
-                            dupe |= ALL_KEYS[i].const_cmp(&ALL_KEYS[j]);
-                            j += 1;
-                        }
-                        i += 1;
-                    }
-                    dupe
-                };
-                DUPE
-            }
-        }
-
         impl $crate::server::Dispatch for $app_name<$n> {
             type Tx = $tx_impl;
 
@@ -183,7 +150,7 @@ macro_rules! define_dispatch {
                     // Standard ICD endpoints
                     //
                     // WARNING! If you add any more standard icd endpoints, make sure you ALSO add them
-                    // to has_dupe above!
+                    // to ALL_DISPATCH_KEYS in sizer!
                     <$crate::standard_icd::PingEndpoint as $crate::Endpoint>::$endpoint_key_name => {
                         // Can we deserialize the request?
                         let Ok(req) = $crate::postcard::from_bytes::<<$crate::standard_icd::PingEndpoint as $crate::Endpoint>::Request>(body) else {
@@ -197,7 +164,7 @@ macro_rules! define_dispatch {
                         tx.send_all_schemas(hdr, self.device_map).await
                     }
                     // WARNING! If you add any more standard icd endpoints, make sure you ALSO add them
-                    // to has_dupe above!
+                    // to ALL_DISPATCH_KEYS in sizer!
                     //
                     // end standard_icd endpoints
                     $(
@@ -348,6 +315,41 @@ macro_rules! define_dispatch {
                 true
             }
 
+            // Same keys the matcher will see, plus the standard ICD endpoints that
+            // are always injected. Compared at NEEDED_SZ so we catch omit_std
+            // collisions at the live wire width, not only identical Key8s.
+            const ALL_DISPATCH_KEYS: &[Key] = &[
+                <$crate::standard_icd::PingEndpoint as $crate::Endpoint>::ENDPOINT_KEY,
+                <$crate::standard_icd::GetAllSchemasEndpoint as $crate::Endpoint>::ENDPOINT_KEY,
+                $(<$endpoint as $crate::Endpoint>::ENDPOINT_KEY,)*
+                $(<$topic_in as $crate::Topic>::TOPIC_KEY,)*
+            ];
+
+            const fn keys_match_at_width(a: Key, b: Key, n: usize) -> bool {
+                match n {
+                    1 => $crate::Key1::from_key8(a).const_cmp(&$crate::Key1::from_key8(b)),
+                    2 => $crate::Key2::from_key8(a).const_cmp(&$crate::Key2::from_key8(b)),
+                    4 => $crate::Key4::from_key8(a).const_cmp(&$crate::Key4::from_key8(b)),
+                    8 => a.const_cmp(&b),
+                    _ => unreachable!(),
+                }
+            }
+
+            const fn has_dupe_at_width(keys: &[Key], n: usize) -> bool {
+                let mut i = 0;
+                while i < keys.len() {
+                    let mut j = i + 1;
+                    while j < keys.len() {
+                        if keys_match_at_width(keys[i], keys[j], n) {
+                            return true;
+                        }
+                        j += 1;
+                    }
+                    i += 1;
+                }
+                false
+            }
+
             // TODO: Warn/error if the list doesn't match the defined handlers?
             pub const NEEDED_SZ_IN: usize = $crate::server::min_key_needed(&[
                 &EP_KEYS,
@@ -372,6 +374,10 @@ macro_rules! define_dispatch {
                     NEEDED_SZ_OUT
                 }
             };
+
+            // Check if there are any unexpected duplicates, typically this occurs
+            // because the user has set `omit_std`
+            pub const HAS_DUPE: bool = has_dupe_at_width(ALL_DISPATCH_KEYS, NEEDED_SZ);
         }
 
         // This is the fun part.
@@ -389,7 +395,7 @@ macro_rules! define_dispatch {
         // same outcome.
         #[doc=concat!("This defines the postcard-rpc app implementation for ", stringify!($app_name))]
         pub type $app_name = impls::$app_name<{ sizer::NEEDED_SZ }>;
-        const HAS_DUPE: bool = $app_name::has_dupe();
+        const HAS_DUPE: bool = sizer::HAS_DUPE;
         const _DUPE_CHECK: () = const {
             assert!(!HAS_DUPE, "Caught duplicate items. Is `omit_std` set? This is likely a bug in your code. See https://github.com/jamesmunns/postcard-rpc/issues/135.");
         };
