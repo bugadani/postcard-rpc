@@ -333,7 +333,6 @@ macro_rules! define_dispatch {
                 false
             }
 
-            // TODO: Warn/error if the list doesn't match the defined handlers?
             pub const NEEDED_SZ_IN: usize = $crate::server::min_key_needed(&[
                 &EP_KEYS,
                 &TP_IN_KEYS,
