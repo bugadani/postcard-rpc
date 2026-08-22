@@ -123,7 +123,7 @@ macro_rules! define_dispatch {
     //////////////////////////////////////////////////////////////////////////////
     (@matcher
         $n:literal $app_name:ident $tx_impl:ty; $spawn_fn:ident $key_ty:ty; $key_kind:expr;
-        $endpoint_key_name:ident / $topic_key_name:ident = $bytes_ty:ty;
+        $endpoint_key_name:ident / $topic_key_name:ident
         ($($endpoint:ty | $ep_flavor:tt | $ep_handler:ident)*)
         ($($topic_in:ty | $tp_flavor:tt | $tp_handler:ident)*)
     ) => {
@@ -445,25 +445,25 @@ macro_rules! define_dispatch {
 
             $crate::define_dispatch! {
                 @matcher 1 $app_name $tx_impl; $spawn_fn $crate::Key1; $crate::header::VarKeyKind::Key1;
-                ENDPOINT_KEY1 / TOPIC_KEY1 = u8;
+                ENDPOINT_KEY1 / TOPIC_KEY1
                 ($($endpoint | $ep_flavor | $ep_handler)*)
                 ($($topic_in | $tp_flavor | $tp_handler)*)
             }
             $crate::define_dispatch! {
                 @matcher 2 $app_name $tx_impl; $spawn_fn $crate::Key2; $crate::header::VarKeyKind::Key2;
-                ENDPOINT_KEY2 / TOPIC_KEY2 = [u8; 2];
+                ENDPOINT_KEY2 / TOPIC_KEY2
                 ($($endpoint | $ep_flavor | $ep_handler)*)
                 ($($topic_in | $tp_flavor | $tp_handler)*)
             }
             $crate::define_dispatch! {
                 @matcher 4 $app_name $tx_impl; $spawn_fn $crate::Key4; $crate::header::VarKeyKind::Key4;
-                ENDPOINT_KEY4 / TOPIC_KEY4 = [u8; 4];
+                ENDPOINT_KEY4 / TOPIC_KEY4
                 ($($endpoint | $ep_flavor | $ep_handler)*)
                 ($($topic_in | $tp_flavor | $tp_handler)*)
             }
             $crate::define_dispatch! {
                 @matcher 8 $app_name $tx_impl; $spawn_fn $crate::Key; $crate::header::VarKeyKind::Key8;
-                ENDPOINT_KEY / TOPIC_KEY = [u8; 8];
+                ENDPOINT_KEY / TOPIC_KEY
                 ($($endpoint | $ep_flavor | $ep_handler)*)
                 ($($topic_in | $tp_flavor | $tp_handler)*)
             }
