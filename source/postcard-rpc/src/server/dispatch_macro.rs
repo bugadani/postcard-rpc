@@ -139,6 +139,14 @@ macro_rules! define_dispatch {
                     let err = $crate::standard_icd::WireError::KeyTooSmall;
                     return tx.error(hdr.seq_no, err).await;
                 };
+
+                // Store some items as named bindings, so we can use `ident` in the
+                // recursive macro expansion. Load bearing order: we borrow `context`
+                // from `dispatch` because we need `dispatch` AFTER `context`, so NLL
+                // allows this to still borrowck
+                let context = &mut self.context;
+                let spawninfo = &self.spawn;
+
                 match keyb {
                     // Standard ICD endpoints
                     //
@@ -168,15 +176,6 @@ macro_rules! define_dispatch {
                                 return tx.error(hdr.seq_no, err).await;
                             };
 
-                            // Store some items as named bindings, so we can use `ident` in the
-                            // recursive macro expansion. Load bearing order: we borrow `context`
-                            // from `dispatch` because we need `dispatch` AFTER `context`, so NLL
-                            // allows this to still borrowck
-                            let dispatch = self;
-                            let context = &mut dispatch.context;
-                            #[allow(unused)]
-                            let spawninfo = &dispatch.spawn;
-
                             // This will expand to the right "flavor" of handler
                             $crate::define_dispatch!(@ep_arm $ep_flavor ($endpoint) $ep_handler context hdr req tx ($spawn_fn) spawninfo)
                         }
@@ -188,15 +187,6 @@ macro_rules! define_dispatch {
                                 // This is a topic, not much to be done
                                 return Ok(());
                             };
-
-                            // Store some items as named bindings, so we can use `ident` in the
-                            // recursive macro expansion. Load bearing order: we borrow `context`
-                            // from `dispatch` because we need `dispatch` AFTER `context`, so NLL
-                            // allows this to still borrowck
-                            let dispatch = self;
-                            let context = &mut dispatch.context;
-                            #[allow(unused)]
-                            let spawninfo = &dispatch.spawn;
 
                             $crate::define_dispatch!(@tp_arm $tp_flavor $tp_handler context hdr msg tx ($spawn_fn) spawninfo);
                             Ok(())
